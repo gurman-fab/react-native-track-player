@@ -191,6 +191,21 @@ RCT_EXPORT_MODULE()
 }
 
 /*****************************************
+ * Synchronous JSI Getters
+ *****************************************/
+- (double)getPositionSync {
+  return [nativeTrackPlayer getPositionSync];
+}
+
+- (NSString *)getStateSync {
+  return [nativeTrackPlayer getStateSync];
+}
+
+- (double)getActiveTrackIndexSync {
+  return [nativeTrackPlayer getActiveTrackIndexSync];
+}
+
+/*****************************************
  * Android Only Methods (Stubs)
  *****************************************/
 - (void)validateOnStartCommandIntent:(nonnull RCTPromiseResolveBlock)resolve reject:(nonnull RCTPromiseRejectBlock)reject {
