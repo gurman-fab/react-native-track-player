@@ -570,7 +570,7 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
     }
 
     override fun getStateSync(): String {
-        return if (isServiceBound && ::musicService.isInitialized) musicService.syncState else State.None.state
+        return if (isServiceBound && ::musicService.isInitialized) musicService.syncState else "none"
     }
 
     override fun getActiveTrackIndexSync(): Double {

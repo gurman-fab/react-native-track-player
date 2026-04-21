@@ -170,7 +170,7 @@ class MusicService : HeadlessJsMediaService() {
     // Written only on the main thread (player event callbacks), read from the JS thread.
     @Volatile var syncPosition: Double = -1.0
         private set
-    @Volatile var syncState: String = State.None.state
+    @Volatile var syncState: String = "none"
         private set
     @Volatile var syncActiveTrackIndex: Int = -1
         private set
@@ -572,7 +572,7 @@ class MusicService : HeadlessJsMediaService() {
     private fun observeEvents() {
         scope.launch {
             event.stateChange.collect {
-                syncState = getPlayerStateBundle(it).getString("state") ?: State.None.state
+                syncState = getPlayerStateBundle(it).getString("state") ?: "none"
                 emit(MusicEvents.PLAYBACK_STATE, getPlayerStateBundle(it))
 
                 if (it == AudioPlayerState.ENDED && player.nextItem == null) {
