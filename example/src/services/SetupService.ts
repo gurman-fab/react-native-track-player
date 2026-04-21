@@ -2,7 +2,7 @@ import TrackPlayer, {
   AppKilledPlaybackBehavior,
   Capability,
   RepeatMode,
-} from 'react-native-track-player';
+} from '@gurman-fab/react-native-track-player';
 
 export const DefaultRepeatMode = RepeatMode.Queue;
 export const DefaultAudioServiceBehaviour =

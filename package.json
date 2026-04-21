@@ -1,6 +1,6 @@
 {
-  "name": "react-native-track-player",
-  "version": "5.0.0-alpha0",
+  "name": "@gurman-fab/react-native-track-player",
+  "version": "5.1.0",
   "description": "A fully fledged audio module created for music apps",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
@@ -85,7 +85,8 @@
     "url": "https://github.com/doublesymmetry/react-native-track-player/issues"
   },
   "publishConfig": {
-    "registry": "https://registry.npmjs.org/"
+    "registry": "https://npm.pkg.github.com/",
+    "access": "restricted"
   },
   "peerDependencies": {
     "react": "*",

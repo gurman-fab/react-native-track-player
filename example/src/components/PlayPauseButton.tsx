@@ -5,7 +5,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
-import TrackPlayer, { useIsPlaying } from 'react-native-track-player';
+import TrackPlayer, { useIsPlaying } from '@gurman-fab/react-native-track-player';
 import Icon from '@react-native-vector-icons/fontawesome6';
 
 export const PlayPauseButton: React.FC = () => {

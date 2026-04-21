@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, TouchableWithoutFeedback, View } from 'react-native';
-import TrackPlayer, { usePlaybackState } from 'react-native-track-player';
+import TrackPlayer, { usePlaybackState } from '@gurman-fab/react-native-track-player';
 import Icon from '@react-native-vector-icons/fontawesome6';
 
 import { PlaybackError } from './PlaybackError';
