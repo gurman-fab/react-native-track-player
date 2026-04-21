@@ -456,3 +456,31 @@ export async function validateOnStartCommandIntent(): Promise<boolean> {
   if (!isAndroid) return true;
   return TrackPlayer.validateOnStartCommandIntent();
 }
+
+// MARK: - Synchronous JSI Getters
+
+/**
+ * Synchronously returns the current playback position in seconds.
+ * Returns -1 if the player is not initialized.
+ * Use this instead of getProgress() when you need a non-async read (e.g. on old/slow devices).
+ */
+export function getPositionSync(): number {
+  return TrackPlayer.getPositionSync();
+}
+
+/**
+ * Synchronously returns the current playback state string.
+ * Returns STATE_NONE if the player is not initialized.
+ * Use this instead of getPlaybackState() for non-async reads.
+ */
+export function getStateSync(): string {
+  return TrackPlayer.getStateSync();
+}
+
+/**
+ * Synchronously returns the index of the active track, or -1 if none.
+ * Use this instead of getActiveTrackIndex() for non-async reads.
+ */
+export function getActiveTrackIndexSync(): number {
+  return TrackPlayer.getActiveTrackIndexSync();
+}

@@ -561,6 +561,34 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         callback.resolve(musicService.onStartCommandIntentValid)
     }
 
+    // Synchronous JSI getters — called directly on the JS thread, no Promise/coroutine needed.
+    // Returns sentinel values (-1 / STATE_NONE) when the service is not yet bound so callers
+    // never get an exception — they should guard on the returned value.
+
+    override fun getPositionSync(): Double {
+        return if (isServiceBound && ::musicService.isInitialized) {
+            musicService.getPositionInSeconds()
+        } else {
+            -1.0
+        }
+    }
+
+    override fun getStateSync(): String {
+        return if (isServiceBound && ::musicService.isInitialized) {
+            musicService.getPlayerStateBundle(musicService.state).getString("state") ?: State.None.state
+        } else {
+            State.None.state
+        }
+    }
+
+    override fun getActiveTrackIndexSync(): Double {
+        return if (isServiceBound && ::musicService.isInitialized && !musicService.tracks.isEmpty()) {
+            musicService.getCurrentTrackIndex().toDouble()
+        } else {
+            -1.0
+        }
+    }
+
     // Bridgeless interop layer tries to pass the `Job` from `scope.launch` to the JS side
     // which causes an exception. We can work around this using a wrapper.
     private fun launchInScope(block: suspend () -> Unit) {

@@ -107,6 +107,12 @@ class MusicService : HeadlessJsMediaService() {
         mediaSession = MediaLibrarySession.Builder(this, fakePlayer,
             InnerMediaSessionCallback()
         )
+            // Use a unique session ID per launch to avoid crashes on aggressive-OEM devices
+            // (Oppo/Xiaomi/ColorOS) that SIGKILL the process without calling onDestroy(),
+            // leaving a zombie MediaSession with ID "rntp_session" in Android's system.
+            // A fresh timestamp ID avoids the "Session ID must be unique" IllegalStateException.
+            // See: https://github.com/doublesymmetry/react-native-track-player/issues/2567
+            .setId("rntp_${System.currentTimeMillis()}")
             .setBitmapLoader(CacheBitmapLoader(CoilBitmapLoader(this)))
             // https://github.com/androidx/media/issues/1218
             .setSessionActivity(
@@ -161,19 +167,30 @@ class MusicService : HeadlessJsMediaService() {
         }
 
     private var latestOptions: Bundle? = null
-    private var commandStarted = false
+    private var pendingSkipNext = false
+    private var pendingSkipNextTrackId: String? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         onStartCommandIntentValid = intent != null
         Timber.d("onStartCommand: ${intent?.action}, ${intent?.`package`}")
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            // HACK: this is not supposed to be here. I definitely screwed up. but Why?
             onMediaKeyEvent(intent)
         }
-        // HACK: Why is onPlay triggering onStartCommand??
-        if (!commandStarted) {
-            commandStarted = true
-            super.onStartCommand(intent, flags, startId)
+        super.onStartCommand(intent, flags, startId)
+        // If a NEXT was requested while JS was dead, re-emit once JS has had time to re-register.
+        // Snapshot the track ID so we don't re-emit if JS already handled the skip (the track
+        // would have changed, making the ID mismatch and suppressing the redundant event).
+        if (pendingSkipNext) {
+            pendingSkipNext = false
+            val expectedTrackId = pendingSkipNextTrackId
+            scope.launch {
+                delay(4000)
+                if (::player.isInitialized
+                    && player.currentIndex >= player.items.size - 1
+                    && currentTrack?.originalItem?.getString("id") == expectedTrackId) {
+                    emit(MusicEvents.BUTTON_SKIP_NEXT)
+                }
+            }
         }
         return START_STICKY
     }
@@ -288,6 +305,22 @@ class MusicService : HeadlessJsMediaService() {
 
                 Capability.SEEK_TO -> {
                     playerCommandsBuilder.add(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+                }
+
+                // Add standard player commands for SKIP_TO_NEXT / SKIP_TO_PREVIOUS so that
+                // OEM notification panels (Samsung, OnePlus/ColorOS, OPPO, Vivo/FuntouchOS)
+                // read them and render the compact-player buttons as ENABLED.
+                // Without these, OEMs grey-out or silently swallow button presses even when
+                // custom CommandButtons are registered.
+                // KotlinAudio's interceptPlayerActionsTriggeredExternally=true ensures these
+                // standard commands are intercepted and emitted as BUTTON_SKIP_NEXT /
+                // BUTTON_SKIP_PREVIOUS events to JS rather than directly moving the player.
+                Capability.SKIP_TO_NEXT -> {
+                    playerCommandsBuilder.add(Player.COMMAND_SEEK_TO_NEXT)
+                }
+
+                Capability.SKIP_TO_PREVIOUS -> {
+                    playerCommandsBuilder.add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
                 }
 
                 else -> {}
@@ -576,7 +609,17 @@ class MusicService : HeadlessJsMediaService() {
 
                     MediaSessionCallback.PLAY -> emit(MusicEvents.BUTTON_PLAY)
                     MediaSessionCallback.PAUSE -> emit(MusicEvents.BUTTON_PAUSE)
-                    MediaSessionCallback.NEXT -> emit(MusicEvents.BUTTON_SKIP_NEXT)
+                    MediaSessionCallback.NEXT -> {
+                        emit(MusicEvents.BUTTON_SKIP_NEXT)
+                        // Standard command path (Samsung/OEM using COMMAND_SEEK_TO_NEXT directly):
+                        // apply the same dead-JS retry as the custom command handler so that
+                        // aggressive battery managers killing HeadlessJsTask are handled here too.
+                        if (player.currentIndex >= player.items.size - 1) {
+                            pendingSkipNext = true
+                            pendingSkipNextTrackId = currentTrack?.originalItem?.getString("id")
+                            startService(Intent(applicationContext, MusicService::class.java))
+                        }
+                    }
                     MediaSessionCallback.PREVIOUS -> emit(MusicEvents.BUTTON_SKIP_PREVIOUS)
                     MediaSessionCallback.STOP -> emit(MusicEvents.BUTTON_STOP)
                     MediaSessionCallback.FORWARD -> {
@@ -796,6 +839,10 @@ class MusicService : HeadlessJsMediaService() {
             Timber.d("Releasing media session and destroying player")
             mediaSession.release()
             player.destroy()
+        } else {
+            // Release resources even when player was never initialized (prevents leak on service restart)
+            fakePlayer.release()
+            mediaSession.release()
         }
 
         progressUpdateJob?.cancel()
@@ -931,13 +978,34 @@ class MusicService : HeadlessJsMediaService() {
             command: SessionCommand,
             args: Bundle
         ): ListenableFuture<SessionResult> {
-            player.forwardingPlayer.let {
-                when (command.customAction) {
-                    CustomCommandButton.JUMP_BACKWARD.customAction -> { it.seekBack() }
-                    CustomCommandButton.JUMP_FORWARD.customAction -> { it.seekForward() }
-                    CustomCommandButton.NEXT.customAction -> { it.seekToNext() }
-                    CustomCommandButton.PREVIOUS.customAction -> { it.seekToPrevious() }
+            when (command.customAction) {
+                CustomCommandButton.JUMP_BACKWARD.customAction -> player.forwardingPlayer.seekBack()
+                CustomCommandButton.JUMP_FORWARD.customAction -> player.forwardingPlayer.seekForward()
+                CustomCommandButton.NEXT.customAction -> {
+                    try {
+                        if (player.currentIndex < player.items.size - 1) {
+                            skipToNext() // next track already queued — instant skip
+                        } else {
+                            emit(MusicEvents.BUTTON_SKIP_NEXT) // let JS fetch and queue it
+                            // JS task may be dead on OEM devices (Samsung/Mi/Vivo aggressive battery
+                            // optimization kills HeadlessJsTask while native audio keeps playing).
+                            // Restart the service so onStartCommand triggers a new HeadlessJsTask,
+                            // then re-emit BUTTON_SKIP_NEXT after JS has had time to re-register.
+                            // Track the current track ID so the re-emit is suppressed if JS already
+                            // handled the skip (track changed = skip succeeded, no retry needed).
+                            pendingSkipNext = true
+                            pendingSkipNextTrackId = currentTrack?.originalItem?.getString("id")
+                            startService(Intent(applicationContext, MusicService::class.java))
+                        }
+                    } catch (e: Exception) {
+                        Timber.e(e, "Error handling NEXT command")
+                        emit(MusicEvents.BUTTON_SKIP_NEXT)
+                        pendingSkipNext = true
+                        pendingSkipNextTrackId = currentTrack?.originalItem?.getString("id")
+                        startService(Intent(applicationContext, MusicService::class.java))
+                    }
                 }
+                CustomCommandButton.PREVIOUS.customAction -> skipToPrevious()
             }
             return super.onCustomCommand(session, controller, command, args)
         }

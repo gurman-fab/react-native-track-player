@@ -96,6 +96,11 @@ export interface Spec extends TurboModule {
     PITCH_ALGORITHM_VOICE: number;
   };
 
+  // synchronous JSI getters (no Promise — runs on JS thread via TurboModule JSI binding)
+  getPositionSync(): number;
+  getStateSync(): string;
+  getActiveTrackIndexSync(): number;
+
   // android methods
   acquireWakeLock(): Promise<void>;
   abandonWakeLock(): Promise<void>;

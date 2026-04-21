@@ -445,13 +445,21 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     ) {
         if (rejectWhenNotInitialized(reject: reject)) { return }
 
-        player.previous()
+        let RESTART_THRESHOLD: Double = 3.0 // 3 seconds
 
-        // if an initialTime is passed the seek to it
-        if (initialTime >= 0) {
-            self.seekTo(time: initialTime, resolve: resolve, reject: reject)
+        if player.currentTime > RESTART_THRESHOLD {
+            // Position > 3 seconds: restart current track
+            self.seekTo(time: 0.0, resolve: resolve, reject: reject)
         } else {
-            resolve(NSNull())
+            // Position <= 3 seconds: skip to previous track
+            player.previous()
+
+            // if an initialTime is passed then seek to it
+            if (initialTime >= 0) {
+                self.seekTo(time: initialTime, resolve: resolve, reject: reject)
+            } else {
+                resolve(NSNull())
+            }
         }
     }
 
@@ -650,6 +658,29 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     public func getPlaybackState(resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
         if (rejectWhenNotInitialized(reject: reject)) { return }
         resolve(getPlaybackStateBodyKeyValues(state: player.playerState))
+    }
+
+    // MARK: - Synchronous JSI Getters
+    // No resolve/reject — TurboModule codegen maps these to direct JSI returns on the JS thread.
+    // Returns sentinel values when not initialized so callers can guard without try/catch.
+
+    @objc
+    public func getPositionSync() -> Double {
+        guard hasInitialized else { return -1.0 }
+        return player.currentTime
+    }
+
+    @objc
+    public func getStateSync() -> String {
+        guard hasInitialized else { return "none" }
+        return getPlaybackStateBodyKeyValues(state: player.playerState)["state"] as? String ?? "none"
+    }
+
+    @objc
+    public func getActiveTrackIndexSync() -> Double {
+        guard hasInitialized else { return -1.0 }
+        let index = player.currentIndex
+        return (index >= 0 && index < player.items.count) ? Double(index) : -1.0
     }
 
     @objc
