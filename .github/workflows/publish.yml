@@ -24,7 +24,7 @@ jobs:
           scope: '@gurman-fab'
 
       - name: Install dependencies
-        run: yarn install --immutable
+        run: yarn install
 
       - name: Build Library
         run: yarn build
