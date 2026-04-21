@@ -18,6 +18,12 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
 
     private var hasInitialized = false
     private let player = QueuedAudioPlayer()
+
+    // Cached values for synchronous JSI getters — written on the audio/main thread
+    // inside event handlers, read from the JS thread. Avoids cross-thread AVFoundation access.
+    private var _syncPosition: Double = -1.0
+    private var _syncState: String = "none"
+    private var _syncActiveTrackIndex: Double = -1.0
     private let audioSessionController = AudioSessionController.shared
     private var shouldEmitProgressEvent: Bool = false
     private var shouldResumePlaybackAfterInterruptionEnds: Bool = false
@@ -666,21 +672,17 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
 
     @objc
     public func getPositionSync() -> Double {
-        guard hasInitialized else { return -1.0 }
-        return player.currentTime
+        return _syncPosition
     }
 
     @objc
     public func getStateSync() -> String {
-        guard hasInitialized else { return "none" }
-        return getPlaybackStateBodyKeyValues(state: player.playerState)["state"] as? String ?? "none"
+        return _syncState
     }
 
     @objc
     public func getActiveTrackIndexSync() -> Double {
-        guard hasInitialized else { return -1.0 }
-        let index = player.currentIndex
-        return (index >= 0 && index < player.items.count) ? Double(index) : -1.0
+        return _syncActiveTrackIndex
     }
 
     @objc
@@ -746,6 +748,7 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     // MARK: - QueuedAudioPlayer Event Handlers
 
     func handleAudioPlayerStateChange(state: AVPlayerWrapperState) {
+        _syncState = getPlaybackStateBodyKeyValues(state: state)["state"] as? String ?? "none"
         emit(event: EventType.PlaybackState, body: getPlaybackStateBodyKeyValues(state: state))
         if (state == .ended) {
             emit(event: EventType.PlaybackQueueEnded, body: [
@@ -821,6 +824,8 @@ public class NativeTrackPlayerImpl: NSObject, AudioSessionControllerDelegate {
     }
 
     func handleAudioPlayerSecondElapse(seconds: Double) {
+        _syncPosition = player.currentTime
+        _syncActiveTrackIndex = Double(player.currentIndex)
         // because you cannot prevent the `event.secondElapse` from firing
         // do not emit an event if `progressUpdateEventInterval` is nil
         // additionally, there are certain instances in which this event is emitted

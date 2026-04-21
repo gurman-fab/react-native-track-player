@@ -166,6 +166,15 @@ class MusicService : HeadlessJsMediaService() {
             player.playWhenReady = value
         }
 
+    // Volatile fields for safe cross-thread reads from JSI sync getters.
+    // Written only on the main thread (player event callbacks), read from the JS thread.
+    @Volatile var syncPosition: Double = -1.0
+        private set
+    @Volatile var syncState: String = State.None.state
+        private set
+    @Volatile var syncActiveTrackIndex: Int = -1
+        private set
+
     private var latestOptions: Bundle? = null
     private var pendingSkipNext = false
     private var pendingSkipNextTrackId: String? = null
@@ -367,6 +376,8 @@ class MusicService : HeadlessJsMediaService() {
     @MainThread
     private suspend fun progressUpdateEvent(): Bundle {
         return withContext(Dispatchers.Main) {
+            syncPosition = player.position.toSeconds()
+            syncActiveTrackIndex = player.currentIndex
             Bundle().apply {
                 putDouble(POSITION_KEY, player.position.toSeconds())
                 putDouble(DURATION_KEY, player.duration.toSeconds())
@@ -561,6 +572,7 @@ class MusicService : HeadlessJsMediaService() {
     private fun observeEvents() {
         scope.launch {
             event.stateChange.collect {
+                syncState = getPlayerStateBundle(it).getString("state") ?: State.None.state
                 emit(MusicEvents.PLAYBACK_STATE, getPlayerStateBundle(it))
 
                 if (it == AudioPlayerState.ENDED && player.nextItem == null) {
@@ -571,6 +583,8 @@ class MusicService : HeadlessJsMediaService() {
 
         scope.launch {
             event.audioItemTransition.collect {
+                syncActiveTrackIndex = player.currentIndex
+                syncPosition = player.position.toSeconds()
                 if (it !is AudioItemTransitionReason.REPEAT) {
                     emitPlaybackTrackChangedEvents(
                         player.previousIndex,

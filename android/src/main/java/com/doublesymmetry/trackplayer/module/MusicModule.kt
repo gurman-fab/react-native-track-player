@@ -566,27 +566,15 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
     // never get an exception — they should guard on the returned value.
 
     override fun getPositionSync(): Double {
-        return if (isServiceBound && ::musicService.isInitialized) {
-            musicService.getPositionInSeconds()
-        } else {
-            -1.0
-        }
+        return if (isServiceBound && ::musicService.isInitialized) musicService.syncPosition else -1.0
     }
 
     override fun getStateSync(): String {
-        return if (isServiceBound && ::musicService.isInitialized) {
-            musicService.getPlayerStateBundle(musicService.state).getString("state") ?: State.None.state
-        } else {
-            State.None.state
-        }
+        return if (isServiceBound && ::musicService.isInitialized) musicService.syncState else State.None.state
     }
 
     override fun getActiveTrackIndexSync(): Double {
-        return if (isServiceBound && ::musicService.isInitialized && !musicService.tracks.isEmpty()) {
-            musicService.getCurrentTrackIndex().toDouble()
-        } else {
-            -1.0
-        }
+        return if (isServiceBound && ::musicService.isInitialized) musicService.syncActiveTrackIndex.toDouble() else -1.0
     }
 
     // Bridgeless interop layer tries to pass the `Job` from `scope.launch` to the JS side
